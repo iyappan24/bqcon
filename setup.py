@@ -13,7 +13,7 @@ setup(
     description="Python Package for doing basic operations over google big query ",
     long_description_content_type="text/markdown",
     long_description=README,
-    url="",
+    url="https://github.com/iyappan24/bqcon",
     keywords = ['big query wrapper','google big query sdk'],
     packages=find_packages(),
     classifiers=[
@@ -31,6 +31,8 @@ setup(
          'google-cloud-bigquery',
         'pandas-gbq'
       ]
+
 )
+
 
 

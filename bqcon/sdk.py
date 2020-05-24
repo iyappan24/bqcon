@@ -15,20 +15,17 @@ class Bqsdk :
         """
 
 
-    def setConnect(self,path):
+    def config(self,path):
         """
         Function to take in path of credentials json file for initialisation for the connection
 
         Input :
 
         path : String : Path of credentials json file
-
         """
         #setting the path variables
 
         self.cred_path = path
-        self.datasets = list()
-        self.tables = dict()
         self.connection = ""
         self.project_name = ""
         self.schemas = dict()
@@ -68,39 +65,28 @@ class Bqsdk :
                 #appending the list of all the datasets
                 for dataset in datasets:
 
-                    self.datasets.append(dataset.dataset_id)
+                    self.schemas[dataset.dataset_id] = dict()
 
-                # getting all the tables in each dataset
+                # getting all the tables in each dataset and appending the dataset on nested dictionary
 
-                for value in self.datasets:
+                for dataset in self.schemas:
 
-                    table_names = []
-
-                    get_tables = list(self.connection.list_tables(value))
+                    get_tables = list(self.connection.list_tables(dataset))
 
                     if get_tables:
 
                         for row in get_tables:
 
-                            table_names.append(row.table_id.lower())
+                            cols = self.connection.get_table(self.project_name+"."+dataset+"."+row.table_id).schema
 
-                        self.tables[value] = table_names
+                            columns= [ x.name for x in cols]
 
-                    else:
+                            if columns:
+                                self.schemas[dataset][row.table_id] = columns #getting the schemas of each table and appending as a list
+                            else:
+                                self.schemas[dataset][row.table_id] = list()
 
-                        self.tables[value] = list()
 
-
-                #getting the column names of each table
-                for dataset in self.datasets:
-
-                    for table in self.tables[dataset]:
-
-                        schemas = self.connection.get_table(self.project_name+"."+dataset+"."+table).schema
-
-                        columns = [x.name for x in schemas]
-
-                        self.schemas[table] = columns
 
             else:
 
@@ -125,8 +111,8 @@ class Bqsdk :
 
         """
 
-        if dataset in self.datasets:
-            if tablename in self.tables[dataset]:
+        if dataset in self.schemas:
+            if tablename in self.schemas[dataset]:
                 pass
             else:
                 raise ValueError("Table not found in the dataset")
@@ -159,14 +145,13 @@ class Bqsdk :
         returns Dataframe
         """
 
-        if dataset in self.datasets:
-            if tablename in self.tables[dataset]:
+        if dataset in self.schemas:
+            if tablename in self.schemas[dataset]:
                 pass
             else:
                 raise ValueError("Table not found in the dataset")
         else:
-            raise  ValueError("Dataset not found")
-
+            raise ValueError("Dataset not found")
 
         query = fetchone_query(project=self.project_name,dataset=dataset,tablename=tablename,condition=condition,columns=columns)
 
@@ -196,8 +181,8 @@ class Bqsdk :
         returns Dataframe
         """
 
-        if dataset in self.datasets:
-            if tablename in self.tables[dataset]:
+        if dataset in self.schemas:
+            if tablename in self.schemas[dataset]:
                 pass
             else:
                 raise ValueError("Table not found in the dataset")
@@ -264,7 +249,7 @@ class Bqsdk :
         if isinstance(dataset,str):
             pass
         else:
-            raise ValueError("dataset  argumnent must be a string")
+            raise ValueError("dataset  argument must be a string")
 
         if isinstance(tablename,str):
             pass
@@ -281,41 +266,35 @@ class Bqsdk :
             raise  ValueError("Mode argument must  be a string ")
 
 
-
-
-
-        if dataset in self.datasets:
-
-            if tablename in self.tables[dataset]:
-                "any mode will suffice"
-                pass
-
-            elif mode != 'fail':
-                "recreation situation : either create a new table or append table"
-
-                #updating object data members
-                self.tables[dataset] = list()
-                self.tables[dataset].append(tablename) #new table will be added in bigquery
-                self.schemas[tablename] = list(data.columns) #new columns that are being added in the big query
-
-        elif mode!='fail':
-
-            "recreation situation : either create a new table and dataset or append table and dataset"
-
-            #updating object data members
-            self.tables[dataset] = list()
-            self.tables[dataset].append(tablename)  # new table will be added in bigquery
-            self.schemas[tablename] = list(data.columns)  # new columns that are being added in the big query
-            self.datasets.append(dataset)
-
-
-
-
         try:
             table_id = dataset + "." + tablename
             pandas_gbq.to_gbq(data,table_id,project_id=self.project_name,if_exists=mode)
 
+            #after successful insertion updation of current instance object
+
+            if dataset in self.schemas:
+
+                if tablename in self.schemas[dataset]:
+                    "any mode will suffice"
+                    pass
+
+                elif mode != 'fail':
+                    "recreation situation : either create a new table or append table"
+
+                    # updating object data members
+                    self.schemas[dataset][tablename] = list(data.columns)
+
+            elif mode != 'fail':
+
+                "recreation situation : either create a new table and dataset or append table and dataset"
+
+                # updating object data members
+                self.schemas[dataset] = dict()
+                self.schemas[dataset][tablename] = list(data.columns)
+
+
             return True
+
         except:
 
             raise ValueError(sys.exc_info()[1])
@@ -326,37 +305,37 @@ class Bqsdk :
         """
         Function to delete a table
 
-
         return: True if successful deletion
         """
         if isinstance(dataset, str):
             pass
         else:
-            raise ValueError("dataset  argumnent must be a string")
+            raise ValueError("data set  argument must be a string")
 
         if isinstance(tablename, str):
             pass
         else:
-            raise ValueError("tablename arugment must be a string")
+            raise ValueError("table name argument must be a string")
 
 
-        if dataset in self.datasets:
-            if tablename in self.tables[dataset]:
+        if dataset in self.schemas:
+            if tablename in self.schemas[dataset]:
                 pass
             else:
-                raise ValueError("Table not found in the dataset")
+                raise ValueError("Table not found in the data set")
         else:
-            raise ValueError("Dataset not found")
+            raise ValueError("Data set not found")
 
 
 
         try:
             table_id = dataset+"."+tablename
+
             self.connection.delete_table(table_id,not_found_ok=False)
 
 
-            self.tables[dataset].remove(tablename) #removing from the object memory
-            del self.schemas[tablename] #removing the schemas of the deleted table
+            #removing table from object memory
+            del self.schemas[dataset][tablename]  #removing the schemas of the deleted table
 
             return True
         except:
@@ -366,13 +345,14 @@ class Bqsdk :
 
 
 
-    def delete_dataset(self,dataset):
+    def delete_dataset(self,dataset,delete_tables = False):
         """
         Function to delete a dataset and its internal tables
 
         Input :
 
-        dataset : String : Dataset name
+        data set : String : Dataset name
+        delete_tables : Boolean : Default False, if True it will delete the tables inside the dataset as well, else raise exception
 
         return: True if successful deletion
 
@@ -381,10 +361,15 @@ class Bqsdk :
         if isinstance(dataset, str):
             pass
         else:
-            raise ValueError("dataset  argumnent must be a string")
+            raise ValueError("dataset  argument must be a string")
+
+        if isinstance(delete_tables,bool):
+            pass
+        else:
+            raise ValueError("delete_tables argument must be a boolean")
 
 
-        if dataset in self.datasets:
+        if dataset in self.schemas:
             pass
 
         else:
@@ -392,14 +377,17 @@ class Bqsdk :
 
 
         try:
-            self.connection.delete_dataset(dataset,delete_contents=True)
+            self.connection.delete_dataset(dataset,delete_contents=delete_tables)
 
-            self.datasets.remove(dataset) #removing from object moemory
+            #removing from object memory
 
-            for table in self.tables[dataset]:
-                del self.schemas[table] #removing all the nested table schemas
+            #removing nested tables first
 
-            del self.tables[dataset] #removing the nested tables inside the datset from the object memory
+            for tables in self.schemas[dataset]:
+                del self.schemas[dataset][tables]
+
+            #removing the dataset itself from the object memory
+            del self.schemas[dataset]
 
             return True
 
@@ -412,8 +400,8 @@ class Bqsdk :
         """
         Input :
 
-        dataset : String : Dataset name
-        tablename: String : Tablename of the DB
+        dataset : String : Data set name
+        tablename: String : Table name of the DB
         updations: Object : Dictionary : Format : {column:value}
         condition: String : Where condition to filter in the Table
 
@@ -425,21 +413,21 @@ class Bqsdk :
         if isinstance(dataset, str):
             pass
         else:
-            raise ValueError("dataset  argument must be a string")
+            raise ValueError("data set  argument must be a string")
 
-
-        if dataset in self.datasets:
-            if tablename in self.tables[dataset]:
+        if dataset in self.schemas:
+            if tablename in self.schemas[dataset]:
                 pass
             else:
                 raise ValueError("Table not found in the dataset")
         else:
-            raise ValueError("Dataset not found")
+            raise ValueError("Data set not found")
+
 
 
         for col in updations:
 
-            if col in self.schemas[tablename]:
+            if col in self.schemas[dataset][tablename]:
                 pass
             else:
                 raise ValueError("Column not found in table")
